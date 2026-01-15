@@ -1,0 +1,16 @@
+streamlit
+qdrant-client
+sentence-transformers
+transformers
+torch
+pillow
+pytesseract
+opencv-python
+imagehash
+numpy
+pandas
+pydantic
+python-dotenv
+tqdm
+requests
+beautifulsoup4
