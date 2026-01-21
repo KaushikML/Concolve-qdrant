@@ -1,186 +1,418 @@
 spider search : multimodal Misinformation classifier Full System Details
-============================
+======================================================================
 
-Purpose
--------
-spider search : multimodal Misinformation classifier is a Streamlit application that correlates claims and evidence across text documents
-and memes. It stores embeddings and metadata in Qdrant, tracks claim evolution in SQLite,
-and optionally uses Ollama for LLM-assisted claim extraction and stance classification.
-The goal is to surface related claims, evidence snippets, and similar meme variants with
-traceable retrieval paths.
+Document Purpose and Audience
+-----------------------------
+This document provides a comprehensive, implementation-aligned description of the
+"spider search : multimodal Misinformation classifier" system (also referenced in
+UI text as "Concolve"). It is intended for developers, analysts, and operators
+who need to understand how the system ingests content, correlates claims and
+supporting evidence, and surfaces trend signals. It is also written as a short
+pitch: this system helps people validate claims quickly, without manually sifting
+through hundreds or thousands of articles, so decisions are based on transparent,
+traceable evidence rather than noise.
 
-Problem It Solves
------------------
-Misinformation spreads through memes and paraphrased claims. spider search : multimodal classifier helps analysts and
-researchers:
-- Cluster related claims and variants.
-- Find supporting or contradicting evidence.
-- Track meme variants via image similarity and OCR text.
-- Monitor claim trend signals, contradictions, and volatility over time.
-
-High-Level Architecture
------------------------
-1) Streamlit UI (streamlit_app.py)
-   - Analyze Claim/Text
-   - Analyze Meme
-   - Ingest Corpus
-   - Agent Insights
-2) Ingestion Pipeline
-   - OCR and embeddings
-   - Claim extraction and canonicalization
-   - Evidence snippet creation
-3) Storage
-   - Qdrant: vector search and payload metadata
-   - SQLite: sources, claim links, and events
-4) Agents
-   - Claim evolution monitoring
-   - Trend, contradiction, and volatility updates
-
-Qdrant Collections
-------------------
-1) claims
-   - Vector: text_dense (SentenceTransformer embeddings)
-   - Payload fields include:
-     - canonical_claim_id, claim_text
-     - timestamps, mention_count, source_types
-     - support/contradict counts, confidence, status
-     - linked_evidence_ids, linked_media_ids
-     - trend_score, contradiction_ratio, meme_variant_count
-     - volatility_score, alert_level, last_agent_update_ts
-
-2) evidence_snippets
-   - Vector: snippet_dense (text embeddings for each evidence chunk)
-   - Payload fields include:
-     - evidence_id, claim_id
-     - snippet_text, stance
-     - source_id, source_type
-     - timestamp, url, credibility_tier
-
-3) media_memes
-   - Vectors: image_dense (CLIP) and ocr_text_dense (text embeddings)
-   - Payload fields include:
-     - media_id, source_id, timestamp
-     - phash, ocr_text
-     - linked_claim_ids
-
-SQLite Tables
+Quick Summary
 -------------
-The SQLite database stores metadata and event logs:
-- sources: source_id, source_type, title, timestamp, url, text_hash
-- claim_links: source_id, claim_id
-- events: timestamp, claim_id, event_type, delta, reason, source_id, agent_name
-- agent_state: agent_name, last_run_ts, cursor, extra_json
+- The system is a Streamlit web app that helps people check a claim fast and see
+  matched claims plus supporting and contradicting evidence in one place.
+- It ingests text and memes, extracts claims, and canonicalizes them so variants
+  roll up to a single, traceable claim record.
+- Evidence snippets are embedded, linked to claims, and labeled by stance to
+  reduce the need to read countless sources manually.
+- A claim evolution agent tracks trend, contradiction, and volatility signals
+  so analysts can prioritize what matters most.
+- Optional Ollama integration improves claim extraction, stance classification,
+  and short, cautious deductions for decision support.
 
-Core Workflows
---------------
+Table of Contents
+-----------------
+1. System Goals and Problem Statement
+2. High-Level Architecture
+3. Core Data Models
+4. Ingestion Pipelines
+5. Retrieval and Analysis Workflows
+6. Claim Evolution Agent
+7. Models and Algorithms
+8. Configuration and Environment
+9. Storage Layout and Persistence
+10. Operational Notes and Troubleshooting
+11. Limitations and Known Gaps
+12. Extension Points and Future Enhancements
 
-A) Ingesting Text Files (ingestion/ingest_text.py)
-1) Load text from file.
-2) Store source metadata in SQLite.
-3) Chunk text into sentences (core/utils.py chunk_text).
-4) Extract claims from full text (models/claim_extractor.py):
-   - If USE_OLLAMA=true, request claim extraction from Ollama.
-   - Otherwise, fall back to rule-based extraction.
-5) Canonicalize each claim (memory/canonicalize.py):
-   - Compare claim embeddings to existing claims in Qdrant.
+1. System Goals and Problem Statement
+-------------------------------------
+Misinformation often spreads as paraphrased text and image-based memes, forcing
+people to manually scan huge volumes of content to verify a claim. This system
+reduces that burden by quickly surfacing matched claims, evidence snippets, and
+stance signals in a single, structured view. The goal is societal good: enable
+faster, transparent verification so users can make informed decisions without
+digging through thousands of sources.
+
+Core value proposition:
+- Reduce time-to-verdict by clustering claim variants and retrieving evidence.
+- Provide traceable evidence, not just a label, so users can see why a verdict
+  was reached.
+- Support media literacy by highlighting contradictions and trends over time.
+
+How it achieves this:
+- Text and image embeddings for similarity search.
+- OCR extraction and claim parsing from memes.
+- Canonical claim tracking, evidence linking, and automated stance analysis.
+- Trend and contradiction metrics to surface contested claims.
+
+2. High-Level Architecture
+--------------------------
+The system is organized into four primary layers:
+
+A) Streamlit UI (streamlit_app.py)
+- Entry points: Analyze Claim/Text, Analyze Meme, Ingest Corpus, Agent Insights.
+- Presents evidence tables, verdicts, and agent summaries.
+
+B) Ingestion and Preprocessing (ingestion/)
+- ingest_text.py for document ingestion.
+- ingest_meme.py for image ingestion and OCR.
+- dedup.py for content hashing and image pHash.
+
+C) Storage and Indexing
+- Qdrant vectors for claims, evidence snippets, and memes.
+- SQLite metadata for sources, claim links, event logs, and agent state.
+
+D) Agents and Models
+- Claim evolution agent computes trend and dispute metrics.
+- Embedding models (SentenceTransformer, CLIP).
+- OCR via Tesseract and stance classification via NLI or Ollama.
+
+3. Core Data Models
+-------------------
+This section describes the data stored in Qdrant and SQLite and how it is used
+throughout the system.
+
+3.1 Qdrant Collections
+- Qdrant is used for vector similarity search. All vectors are stored with
+  payload metadata to enable filtering and retrieval.
+- Distance metric: Cosine for all vectors.
+
+A) claims (collection: "claims")
+Vector(s):
+- text_dense: text embeddings from SentenceTransformer (normalized).
+
+Payload fields include:
+- canonical_claim_id: UUID for the canonical claim.
+- claim_text: canonical claim text.
+- first_seen_ts, last_seen_ts: ISO timestamps.
+- mention_count: number of ingested mentions.
+- source_types: list of source types (for example: article, meme).
+- support_count, contradict_count: raw evidence counts.
+- confidence: float between 0.0 and 1.0 (default 0.5).
+- status: string (for example: unverified, disputed).
+- linked_evidence_ids: list of evidence UUIDs (currently not populated).
+- linked_media_ids: list of media UUIDs.
+- trend_score: sources seen in recent trend window.
+- contradiction_ratio: recent contradict / (support + contradict).
+- meme_variant_count: unique pHash count from linked memes.
+- volatility_score: derived from confidence/decay events.
+- alert_level: low, medium, high.
+- last_agent_update_ts: timestamp of last agent update.
+
+B) evidence_snippets (collection: "evidence_snippets")
+Vector(s):
+- snippet_dense: embedding per evidence chunk.
+
+Payload fields include:
+- evidence_id: UUID.
+- claim_id: canonical claim ID.
+- snippet_text: chunked evidence text.
+- stance: support, contradict, or mention.
+- source_id: source file path.
+- source_type: text source type (default article).
+- timestamp: ingestion time.
+- url: currently null.
+- credibility_tier: currently defaults to C.
+
+C) media_memes (collection: "media_memes")
+Vector(s):
+- image_dense: CLIP image embedding (512 dims).
+- ocr_text_dense: OCR text embedding.
+
+Payload fields include:
+- media_id: UUID.
+- source_id: image file path.
+- timestamp: ingestion time.
+- phash: perceptual hash for deduping.
+- ocr_text: extracted OCR text.
+- linked_claim_ids: claims inferred from OCR text.
+
+3.2 SQLite Tables
+The SQLite database stores metadata and event logs for traceability.
+
+A) sources
+- source_id (PRIMARY KEY): file path used as ID.
+- source_type: article or meme.
+- title: currently file path.
+- timestamp: ingestion time.
+- url: reserved for future use.
+- text_hash: SHA256 of text or pHash of meme image.
+
+B) claim_links
+- source_id: links to a source row.
+- claim_id: canonical claim ID.
+
+C) events
+- timestamp: event time.
+- claim_id: claim ID or "system" for agent/system events.
+- event_type: create, merge, reinforce, confidence, decay, or agent_*.
+- delta: numeric delta (confidence or score shift).
+- reason: short explanation.
+- source_id: optional source reference.
+- agent_name: optional agent name.
+
+D) agent_state
+- agent_name (PRIMARY KEY).
+- last_run_ts: timestamp for incremental runs.
+- cursor: reserved for future use.
+- extra_json: serialized metadata, such as last summary.
+
+4. Ingestion Pipelines
+----------------------
+The ingestion layer converts raw files into searchable vectors and linked metadata.
+
+4.1 Text Ingestion (ingestion/ingest_text.py)
+Step-by-step flow:
+1) Read the file and store a source record in SQLite.
+2) Chunk text into sentence-based blocks (max_chars = 500).
+3) Extract claims (up to 5) using:
+   - Ollama (if USE_OLLAMA=true), or
+   - Rule-based extraction (keyword and punctuation heuristics).
+4) Canonicalize each claim:
+   - Embed the claim and search for similar claims in Qdrant.
    - If similarity >= CLAIM_SIM_THRESHOLD, merge into existing claim.
-   - Otherwise, create a new canonical claim in Qdrant.
-6) For each chunk and claim:
-   - Classify stance (models/stance_classifier.py).
-   - Embed the chunk and write to evidence_snippets.
+   - Otherwise, create a new canonical claim.
+5) For each chunk and each claim:
+   - Classify stance: support, contradict, or mention.
+   - Embed the chunk and store in evidence_snippets.
    - Update claim confidence and support/contradict counts.
    - Log events in SQLite.
-7) Trigger claim evolution agent to update trends and alerts.
+6) Trigger the claim evolution agent for updated metrics.
 
-B) Ingesting Meme Images (ingestion/ingest_meme.py)
-1) Load image and compute pHash to deduplicate.
-2) OCR text extraction (models/ocr.py) after grayscale + threshold.
-3) Embed the image with CLIP and the OCR text with SentenceTransformer.
-4) Check Qdrant for near-duplicate images via image_dense + pHash.
-5) Extract claims from OCR text and canonicalize them (same as text flow).
-6) Store meme point in media_memes with image_dense and ocr_text_dense.
-7) Link media to claims via linked_claim_ids.
-8) Trigger claim evolution agent.
+Notes:
+- Evidence creation is O(num_chunks * num_claims). This can grow quickly for
+  large documents, so chunk size and claim extraction limits matter.
+- Credibility_tier is hard-coded to C in the current pipeline.
 
-C) Analyze Claim/Text (streamlit_app.py)
-1) User enters a claim and clicks Analyze Claim.
-2) Embed query text and search claims by text_dense.
-3) For each matched claim, retrieve evidence_snippets filtered by claim_id.
-4) Classify stance for each evidence snippet and compute verdict:
-   - True, False, Mixed, or Inconclusive based on support vs contradict.
-5) Optional: Generate LLM deduction using Ollama.
+4.2 Meme Ingestion (ingestion/ingest_meme.py)
+Step-by-step flow:
+1) Load image and compute pHash for deduplication.
+2) OCR text extraction with grayscale and threshold preprocessing.
+3) Embed image using CLIP and OCR text using SentenceTransformer.
+4) Check for near-duplicate images by vector search and pHash match.
+5) Extract claims from OCR text and canonicalize them.
+6) Store media point in media_memes with image and OCR embeddings.
+7) Link media to claims (update linked_media_ids on each claim).
+8) Trigger the claim evolution agent.
 
-D) Analyze Meme (streamlit_app.py)
-1) User uploads an image and clicks Analyze Meme.
-2) Extract OCR text for display.
-3) Search for similar memes by image_dense.
-4) Search for similar memes by ocr_text_dense if OCR text exists.
-5) If OCR text is present, run claim/evidence retrieval using OCR text.
+Notes:
+- If a duplicate pHash is found among top image matches, ingestion returns early
+  with memes_deduped = 1.
+- Meme ingestion currently does not create evidence_snippets; it only links
+  OCR-derived claims to the media entry.
 
-Agent System (agents/claim_evolution_agent.py)
-----------------------------------------------
-The Claim Evolution Agent computes ongoing metrics to surface trending and disputed claims:
-- Trend score: number of sources linked in the recent TREND_WINDOW_DAYS.
+5. Retrieval and Analysis Workflows
+-----------------------------------
+The Streamlit UI exposes two user-facing analysis flows and one ingestion flow.
+
+5.1 Analyze Claim/Text
+Workflow:
+1) Embed the user query with the text embedder.
+2) Search Qdrant "claims" (text_dense) for top matches (limit 5).
+3) For each matched claim:
+   - Search Qdrant "evidence_snippets" filtered by claim_id.
+   - Classify stance for each evidence snippet relative to the query.
+4) Aggregate stance counts and scores to compute a verdict:
+   - If support + contradict < 2: Inconclusive.
+   - If contradict > support: False (corpus-contradicted).
+   - If support > contradict: True (corpus-supported).
+   - Else: Mixed.
+5) Optional: generate an Ollama-based deduction using curated evidence
+   summaries (models/llm_reasoner.py).
+
+5.2 Analyze Meme
+Workflow:
+1) Extract OCR text and embed the image.
+2) Search media_memes by image_dense (top 5).
+3) If OCR text exists, search media_memes by ocr_text_dense (top 5).
+4) If OCR text exists, run the standard claim/text analysis on OCR text.
+
+5.3 Ingest Corpus
+Workflow:
+1) Users upload multiple text and image files.
+2) Files are saved to a temp directory and passed through ingestion.
+3) The UI provides a "danger zone" option to clear Qdrant and SQLite data.
+
+5.4 Agent Insights
+Workflow:
+- Displays:
+  - Ollama status and a test call.
+  - Agent summary metrics (recent updates, disputed claims, alerts).
+  - Top trending and disputed claims.
+  - Recent agent event logs.
+  - JSON explainability panel for an individual claim.
+
+6. Claim Evolution Agent
+------------------------
+The agent updates claim-level metrics that power trends and alerts. It can be
+triggered after ingestion or run manually via the UI.
+
+6.1 Metrics Calculated
+- Trend score: count of distinct sources linked within TREND_WINDOW_DAYS.
 - Contradiction ratio: contradict / (support + contradict).
-- Meme variant count: count of unique pHash values linked to claims.
-- Volatility score: based on confidence/decay events.
-- Alert levels: computed from trend, contradiction, and volatility.
-The agent can be triggered from ingestion or run manually in the UI.
+- Meme variant count: unique pHash values in linked media.
+- Volatility score: normalized count of confidence or decay events.
+- Alert level: derived from trend, contradiction, and volatility thresholds.
 
-Models and Algorithms
----------------------
-- Text embeddings: SentenceTransformer (TEXT_MODEL_NAME).
-- Image embeddings: CLIP (IMAGE_MODEL_NAME).
-- OCR: Tesseract, with preprocessing for better text extraction.
-- Claim extraction: rule-based fallback or Ollama-based extraction.
-- Stance classification: Ollama (if enabled), else NLI model (BART MNLI) or
-  rule-based fallback.
-- Dedup for memes: pHash + vector similarity check.
+6.2 Thresholds (agents/utils.py)
+- TREND_WINDOW_DAYS = 7
+- CONTRADICTION_WINDOW_DAYS = 30
+- VOLATILITY_WINDOW_DAYS = 30
+- CONTRADICTION_THRESHOLD = 0.6
+- TREND_ALERT_THRESHOLD = 6
+- VOLATILITY_ALERT_THRESHOLD = 0.7
 
-Configuration (.env)
---------------------
-Key environment variables (defaults in core/config.py):
-- QDRANT_URL: URL for Qdrant server (default http://localhost:6333)
-- QDRANT_API_KEY: optional API key
-- TEXT_MODEL_NAME: SentenceTransformer model
-- IMAGE_MODEL_NAME: CLIP model
-- USE_OLLAMA: true/false
-- OLLAMA_MODEL, OLLAMA_URL, OLLAMA_TIMEOUT
-- TESSERACT_CMD: path to tesseract binary (Windows)
-- DATA_DIR: base directory for data (default data)
-- SQLITE_PATH: SQLite DB file path (default data/app.db)
-- CLAIM_SIM_THRESHOLD: claim merge threshold
-- DECAY_DAYS: confidence decay window
+6.3 Agent Logic Summary
+For each claim:
+1) Compute trend counts from recent sources.
+2) Recalculate support/contradict stance counts from recent evidence.
+3) Update contradiction ratio, trend score, meme variant count, and volatility.
+4) If contradiction ratio crosses threshold, mark claim as disputed.
+5) Compute alert_level (low, medium, high) using combined thresholds.
+6) Log event changes, update payloads, and record agent state.
 
-Storage Layout
---------------
-- qdrant_storage/: Docker volume for Qdrant persistence
-- data/app.db: SQLite metadata database
-- data/memes/: local copies of meme files
-- data/text/: local copies of text files
-- data/uploads/: temporary or uploaded files
+6.4 Decay Process
+The decay process nudges confidence toward 0.5 for claims that have not been
+seen recently. It is run on-demand in the UI or as part of agent execution if
+run_decay is enabled.
 
-Operational Notes
------------------
-- Qdrant must be running for all ingestion and retrieval.
-- Keep the Qdrant Docker container running during app usage.
-- Ollama is optional but recommended for better claim extraction and stance analysis.
-- Tesseract is required for OCR; configure TESSERACT_CMD if needed.
+7. Models and Algorithms
+------------------------
+7.1 Embedding Models
+- Text: SentenceTransformer (default: all-MiniLM-L6-v2).
+- Image: CLIP (default: openai/clip-vit-base-patch32).
+- Embeddings are L2-normalized for cosine similarity.
 
-Limitations and Known Gaps
---------------------------
-- OCR quality affects claim extraction for memes.
-- The system does not include automated tests.
-- The UI is designed for interactive exploration rather than batch reporting.
-- Some reasoning steps (LLM deduction) are optional and depend on Ollama availability.
+7.2 OCR Pipeline
+- Uses OpenCV preprocessing (grayscale + Otsu threshold).
+- Tesseract extracts text (language default: eng).
+- OCR output is cleaned to normalize whitespace.
 
-Entry Points and Key Files
---------------------------
-- streamlit_app.py: main UI and user workflows
-- ingestion/ingest_text.py: text ingestion pipeline
-- ingestion/ingest_meme.py: meme ingestion pipeline
-- qdrant_store/collections.py: Qdrant collection setup
-- models/: text/image embedding, OCR, stance classification, claim extraction
-- agents/: claim evolution agent and orchestration
-- storage/sqlite.py: SQLite metadata store
+7.3 Claim Extraction
+- Rule-based extraction:
+  - Splits on sentence boundaries.
+  - Keeps sentences >= 15 chars.
+  - Prioritizes sentences with keywords like claims, says, rumor.
+  - Returns up to 5 claims.
+- Ollama-based extraction (if enabled):
+  - Sends prompt to Ollama and parses JSON list of claims.
+  - Falls back to rule-based extraction on error.
 
+7.4 Stance Classification
+- If USE_OLLAMA=true, the system attempts Ollama stance classification first.
+- If Ollama is not available or fails, it falls back to NLI:
+  - Default model: facebook/bart-large-mnli (NLI_MODEL_NAME optional).
+- A rule-based stance classifier is used if NLI fails.
+
+7.5 Confidence Updates
+- Each evidence snippet updates the claim confidence:
+  - support: +0.05 (extra +0.10 for credibility tier A).
+  - contradict: -0.05 (extra -0.10 for credibility tier A).
+- Confidence is clamped to [0.0, 1.0].
+
+8. Configuration and Environment
+--------------------------------
+The system uses environment variables to control model choices, endpoints, and
+storage. Defaults are defined in core/config.py.
+
+Key variables:
+- QDRANT_URL: Qdrant server URL (default http://localhost:6333).
+- QDRANT_API_KEY: optional Qdrant API key.
+- TEXT_MODEL_NAME: SentenceTransformer model ID.
+- IMAGE_MODEL_NAME: CLIP model ID.
+- USE_OLLAMA: true or false.
+- OLLAMA_MODEL: default llama3.
+- OLLAMA_URL: default http://localhost:11434.
+- OLLAMA_TIMEOUT: timeout seconds for Ollama calls.
+- OLLAMA_STREAM: stream responses (true/false).
+- OLLAMA_NUM_PREDICT: token cap for generation.
+- OLLAMA_TEMPERATURE: temperature for LLM sampling.
+- TESSERACT_CMD: path to tesseract binary (Windows).
+- DATA_DIR: base path for data (default data/).
+- SQLITE_PATH: SQLite DB file (default data/app.db).
+- CLAIM_SIM_THRESHOLD: cosine similarity threshold for merging (default 0.85).
+- DECAY_DAYS: days before confidence decay (default 30).
+- NLI_MODEL_NAME: override for NLI classifier.
+
+9. Storage Layout and Persistence
+---------------------------------
+- qdrant_storage/: Docker volume for Qdrant persistence.
+- data/app.db: SQLite database (sources, claim links, events, agent state).
+- data/memes/: local copies of meme files (if stored externally).
+- data/text/: local copies of text files (if stored externally).
+- data/uploads/: temporary or uploaded files.
+
+10. Operational Notes and Troubleshooting
+-----------------------------------------
+10.1 Running the System
+1) Create a virtual environment and install dependencies.
+2) Start Qdrant container (required).
+3) Optionally run Ollama and pull a model.
+4) Run Streamlit: streamlit run streamlit_app.py.
+
+10.2 Common Issues
+- Qdrant connection failures:
+  - Check QDRANT_URL and container health.
+- Ollama errors or timeouts:
+  - Verify OLLAMA_URL and model availability.
+  - Increase OLLAMA_TIMEOUT for longer prompts.
+- OCR missing text:
+  - Ensure Tesseract is installed and TESSERACT_CMD is set on Windows.
+  - Low-quality images reduce OCR accuracy.
+- Slow ingestion:
+  - Large text files produce many chunk-claim pairs.
+  - CPU-bound embeddings can be slow without GPU.
+
+10.3 Data Reset
+The "danger zone" in the UI clears both Qdrant collections and the SQLite
+metadata. This cannot be undone.
+
+11. Limitations and Known Gaps
+------------------------------
+- No automated test suite.
+- Meme ingestion does not store evidence snippets.
+- Rule-based claim extraction can be noisy for long documents.
+- Evidence scoring uses a simple stance tally rather than probabilistic models.
+- Agent thresholds are fixed in code and not configurable via the UI.
+- LLM deduction is optional and depends on Ollama availability.
+
+12. Extension Points and Future Enhancements
+--------------------------------------------
+Potential upgrades and integration points:
+- Add credibility tiers per source and integrate into confidence updates.
+- Store OCR-derived evidence snippets to improve meme explainability.
+- Introduce batch ingestion with queueing and background jobs.
+- Add UI filters for date ranges, source types, and alert levels.
+- Expand agent logic to incorporate source reliability and decay models.
+- Integrate a more robust claim parsing pipeline (NER + dependency parsing).
+
+Appendix: Example Walkthrough
+-----------------------------
+Example flow for text ingestion and analysis:
+1) Ingest a text file via the UI.
+2) The system extracts up to five claims and stores them in Qdrant.
+3) Evidence snippets are embedded for each claim and chunk pair.
+4) Analyze a claim in the UI; matched claims and evidence appear.
+5) The verdict is computed based on support vs contradict evidence.
+
+Example flow for meme analysis:
+1) Upload a meme image.
+2) OCR text is extracted and used to search claims.
+3) Similar memes are retrieved by image and OCR similarity.
+4) The UI shows a verdict based on OCR text evidence.
