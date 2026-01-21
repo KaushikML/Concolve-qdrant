@@ -1,5 +1,5 @@
 # spider search : multimodal classifier: Qdrant-Powered Multimodal Misinformation Correlation Engine
-
+Demo : https://www.youtube.com/watch?v=hWhCMGOmW5Q&t=3s
 spider search : multimodal classifier is a claim-centric, multimodal (text + image) system that correlates misinformation across memes, articles, and social-media style claims. It uses **Qdrant** as the primary vector memory and retrieval engine, providing evidence-grounded responses, traceability, and long-term memory updates.
 
 ## Why this matters
