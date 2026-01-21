@@ -29,7 +29,7 @@ def _ollama_extract(text: str) -> List[str]:
     response = requests.post(
         f"{settings.ollama_url}/api/generate",
         json={"model": settings.ollama_model, "prompt": prompt, "stream": False},
-        timeout=60,
+        timeout=settings.ollama_timeout,
     )
     response.raise_for_status()
     data = response.json()

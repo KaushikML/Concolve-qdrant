@@ -31,7 +31,7 @@ def _ollama_stance(snippet: str, claim: str) -> Stance:
     response = requests.post(
         f"{settings.ollama_url}/api/generate",
         json={"model": settings.ollama_model, "prompt": prompt, "stream": False},
-        timeout=60,
+        timeout=settings.ollama_timeout,
     )
     response.raise_for_status()
     data = response.json()
@@ -94,14 +94,12 @@ def classify_stance_with_scores(snippet: str, claim: str) -> Tuple[Stance, Dict[
     if settings.use_ollama:
         try:
             stance = _ollama_stance(snippet, claim)
-            scores = {"support": 0.0, "contradict": 0.0, "mention": 0.0}
-            scores[stance] = 1.0
-            return stance, scores
+            if stance in {"support", "contradict"}:
+                scores = {"support": 0.0, "contradict": 0.0, "mention": 0.0}
+                scores[stance] = 1.0
+                return stance, scores
         except Exception:
-            stance = _rule_based_stance(snippet, claim)
-            scores = {"support": 0.0, "contradict": 0.0, "mention": 0.0}
-            scores[stance] = 1.0
-            return stance, scores
+            pass
     try:
         return _nli_stance(snippet, claim)
     except Exception:

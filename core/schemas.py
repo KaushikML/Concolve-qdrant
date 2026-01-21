@@ -15,6 +15,12 @@ class Claim(BaseModel):
     status: str
     linked_evidence_ids: List[str] = Field(default_factory=list)
     linked_media_ids: List[str] = Field(default_factory=list)
+    trend_score: float = 0.0
+    contradiction_ratio: float = 0.0
+    meme_variant_count: int = 0
+    volatility_score: float = 0.0
+    alert_level: str = "low"
+    last_agent_update_ts: Optional[str] = None
     language: Optional[str] = None
     entities: List[str] = Field(default_factory=list)
     topics: List[str] = Field(default_factory=list)

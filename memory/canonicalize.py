@@ -45,6 +45,12 @@ def canonicalize_claim(
         "status": "unverified",
         "linked_evidence_ids": [],
         "linked_media_ids": [],
+        "trend_score": 0.0,
+        "contradiction_ratio": 0.0,
+        "meme_variant_count": 0,
+        "volatility_score": 0.0,
+        "alert_level": "low",
+        "last_agent_update_ts": None,
     }
     upsert_point(CLAIMS_COLLECTION, claim_id, {"text_dense": embedding}, payload)
     log_event(claim_id, "create", 0.0, "new canonical claim", None)

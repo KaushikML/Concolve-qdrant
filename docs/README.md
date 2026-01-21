@@ -1,4 +1,4 @@
-# Concolve Documentation
+# spider search : multimodal classifier Documentation
 
 This folder contains the documentation artifacts required for the hackathon submission.
 

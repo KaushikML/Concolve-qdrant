@@ -43,8 +43,36 @@ def _init_db(conn: sqlite3.Connection) -> None:
             event_type TEXT,
             delta REAL,
             reason TEXT,
-            source_id TEXT
+            source_id TEXT,
+            agent_name TEXT
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_state (
+            agent_name TEXT PRIMARY KEY,
+            last_run_ts TEXT,
+            cursor TEXT,
+            extra_json TEXT
+        )
+        """
+    )
+    _ensure_column(conn, "events", "agent_name", "TEXT")
     conn.commit()
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_type: str) -> None:
+    cursor = conn.execute(f"PRAGMA table_info({table})")
+    columns = [row["name"] for row in cursor.fetchall()]
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_type}")
+
+
+def reset_db() -> None:
+    conn = get_connection()
+    with conn:
+        conn.execute("DELETE FROM claim_links")
+        conn.execute("DELETE FROM events")
+        conn.execute("DELETE FROM sources")
+        conn.execute("DELETE FROM agent_state")

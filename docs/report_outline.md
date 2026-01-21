@@ -28,6 +28,7 @@
 7. **Evidence-Based Responses**
    - Grounded outputs and trace panel.
    - Insufficient/conflicting evidence messaging.
+   - Optional LLM deduction panel (Ollama) grounded in retrieved evidence.
 
 8. **Societal Responsibility**
    - Limitations, bias, privacy, safe messaging.

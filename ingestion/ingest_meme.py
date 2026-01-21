@@ -14,6 +14,7 @@ from models.text_embedder import get_text_embedder
 from qdrant_store.collections import MEDIA_COLLECTION
 from qdrant_store.crud import get_point, search_vectors, upsert_point, update_payload
 from storage.sqlite import get_connection
+from agents.orchestrator import run_claim_evolution_agent
 
 
 def ingest_meme(path: str, source_type: str = "meme") -> Dict[str, int]:
@@ -21,6 +22,7 @@ def ingest_meme(path: str, source_type: str = "meme") -> Dict[str, int]:
     phash = meme_phash(image)
     text_embedder = get_text_embedder()
     image_embedder = get_image_embedder()
+    conn = get_connection()
 
     image_vector = image_embedder.embed([image])[0].tolist()
     ocr_text = clean_text(extract_text(image))
@@ -36,13 +38,18 @@ def ingest_meme(path: str, source_type: str = "meme") -> Dict[str, int]:
         if dup.payload and dup.payload.get("phash") == phash:
             return {"memes_ingested": 0, "memes_deduped": 1}
 
+    with conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO sources (source_id, source_type, title, timestamp, url, text_hash) VALUES (?, ?, ?, ?, ?, ?)",
+            (path, source_type, path, now_iso(), None, phash),
+        )
+
     claims = extract_claims(ocr_text or "")
     linked_claim_ids: List[str] = []
     for claim in claims:
         emb = text_embedder.embed([claim])[0].tolist()
         claim_id, merged = canonicalize_claim(claim, emb, source_type)
         linked_claim_ids.append(claim_id)
-        conn = get_connection()
         with conn:
             conn.execute(
                 "INSERT INTO claim_links (source_id, claim_id) VALUES (?, ?)",
@@ -76,4 +83,5 @@ def ingest_meme(path: str, source_type: str = "meme") -> Dict[str, int]:
             {"linked_media_ids": uniq_list(current + [media_id])},
         )
 
+    run_claim_evolution_agent([path], force_full_scan=False)
     return {"memes_ingested": 1, "memes_deduped": 0}

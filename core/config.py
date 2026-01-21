@@ -1,5 +1,10 @@
 import os
 
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
 
 class Settings:
     def __init__(self) -> None:
@@ -11,9 +16,13 @@ class Settings:
         self.image_model_name = os.getenv(
             "IMAGE_MODEL_NAME", "openai/clip-vit-base-patch32"
         )
-        self.use_ollama = os.getenv("USE_OLLAMA", "false").lower() == "true"
+        self.use_ollama = os.getenv("USE_OLLAMA", "true").lower() == "true"
         self.ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
         self.ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434")
+        self.ollama_timeout = float(os.getenv("OLLAMA_TIMEOUT", "120"))
+        self.ollama_stream = os.getenv("OLLAMA_STREAM", "true").lower() == "true"
+        self.ollama_num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "160"))
+        self.ollama_temperature = float(os.getenv("OLLAMA_TEMPERATURE", "0.2"))
         self.tesseract_cmd = os.getenv("TESSERACT_CMD")
         self.data_dir = os.getenv("DATA_DIR", "data")
         self.sqlite_path = os.getenv("SQLITE_PATH", os.path.join(self.data_dir, "app.db"))

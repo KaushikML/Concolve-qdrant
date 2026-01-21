@@ -12,6 +12,7 @@ from models.text_embedder import get_text_embedder
 from qdrant_store.collections import EVIDENCE_COLLECTION
 from qdrant_store.crud import get_point, upsert_point, update_payload
 from storage.sqlite import get_connection
+from agents.orchestrator import run_claim_evolution_agent
 
 
 def ingest_text(path: str, source_type: str = "article") -> Dict[str, int]:
@@ -89,4 +90,5 @@ def ingest_text(path: str, source_type: str = "article") -> Dict[str, int]:
                 )
                 log_event(claim_id, "confidence", delta, f"stance {stance}", source_id)
 
+    run_claim_evolution_agent([source_id], force_full_scan=False)
     return {"evidence_added": evidence_added, "claims_created": len(set(claim_ids))}

@@ -1,16 +1,16 @@
-# Concolve: Qdrant-Powered Multimodal Misinformation Correlation Engine
+# spider search : multimodal classifier: Qdrant-Powered Multimodal Misinformation Correlation Engine
 
-Concolve is a claim-centric, multimodal (text + image) system that correlates misinformation across memes, articles, and social-media style claims. It uses **Qdrant** as the primary vector memory and retrieval engine, providing evidence-grounded responses, traceability, and long-term memory updates.
+spider search : multimodal classifier is a claim-centric, multimodal (text + image) system that correlates misinformation across memes, articles, and social-media style claims. It uses **Qdrant** as the primary vector memory and retrieval engine, providing evidence-grounded responses, traceability, and long-term memory updates.
 
 ## Why this matters
-Meme-based misinformation spreads fast, often with text paraphrases and image variants. Concolve helps analysts and journalists surface:
+Meme-based misinformation spreads fast, often with text paraphrases and image variants. spider search : multimodal classifier helps analysts and journalists surface:
 
 - Related claim clusters (paraphrases/variants)
 - Similar meme variants (image similarity)
 - Supporting/contradicting evidence snippets
 - A traceable retrieval path (scores, filters, IDs)
 
-> Concolve is a correlation and evidence system — **not a truth oracle**. It reports what the indexed corpus supports and flags insufficient/conflicting evidence when needed.
+> spider search : multimodal classifier is a correlation and evidence system — **not a truth oracle**. It reports what the indexed corpus supports and flags insufficient/conflicting evidence when needed.
 
 ---
 
@@ -44,6 +44,8 @@ See `docs/architecture_diagram.txt` for the ASCII diagram and `docs/report_outli
 - **Qdrant-centric memory**: canonical claims and evidence stored in Qdrant collections with metadata filtering.
 - **Long-term memory**: claim canonicalization, reinforcement, contradiction updates, decay, and audit logs in SQLite.
 - **Evidence-based responses**: stance-grouped evidence snippets with visible trace panel.
+- **LLM deduction (optional)**: Ollama generates a short claim verdict using Qdrant-retrieved evidence.
+- **Agentic memory maintenance**: autonomous claim evolution tracking with trend, contradiction, and alert signals.
 
 ---
 
@@ -56,6 +58,7 @@ models/               # text/image embedding, OCR, rule-based extraction
 qdrant_store/         # Qdrant client + CRUD helpers
 ingestion/            # meme/text ingestion pipelines
 memory/               # canonicalization, confidence, decay, events
+agents/               # agentic monitoring + orchestration
 storage/              # SQLite + file storage helpers
 docs/                 # report outline + architecture diagram
 ```
@@ -97,11 +100,68 @@ Copy `.env.example` to `.env` and adjust if needed:
 cp .env.example .env
 ```
 
+By default `USE_OLLAMA=true` for stance classification. Set it to `false` to fall back to the local NLI + rule-based classifier. Qdrant remains the primary retrieval/memory engine in both modes.
+
+### 4b) Ollama setup (optional but enabled by default)
+
+Install Ollama (Ubuntu snap):
+
+```bash
+sudo snap install ollama
+```
+
+Start the service and pull a model:
+
+```bash
+ollama serve
+ollama pull llama3
+```
+
+Verify it is running:
+
+```bash
+curl http://localhost:11434/api/tags
+```
+
 ### 5) Run the app
 
 ```bash
 streamlit run streamlit_app.py
 ```
+
+Keep the Qdrant Docker container running while the app is in use. On first launch,
+open **Ingest Corpus** and add your memes and text files before running analysis.
+
+---
+
+## Agentic System (Claim Evolution Monitoring)
+
+spider search : multimodal classifier includes an agent that monitors new ingested sources, updates claim trend signals,
+computes contradiction ratios, tracks meme variants, and logs its reasoning into SQLite events.
+
+### Agent usage
+
+- **Streamlit UI**: open **Agent Insights** and click **Run Agent Now**.
+- **Event-driven**: ingestion automatically triggers the agent after meme/text ingestion.
+
+### Optional scheduler
+
+If you want periodic runs, install APScheduler:
+
+```bash
+pip install apscheduler
+```
+
+Run the worker:
+
+```bash
+python -m agents.scheduler
+```
+
+### Database updates
+
+- `agent_state` table is created automatically on first run.
+- `events` table includes `agent_name` for agent-specific logs (auto-migrated).
 
 ---
 
@@ -121,7 +181,7 @@ streamlit run streamlit_app.py
 
 3. **Analyze Claim/Text**
    - Enter a claim sentence.
-   - View matched claims + evidence, plus trace panel.
+   - View matched claims + evidence, plus the Ollama deduction panel if enabled.
 
 4. **Run Decay** (optional)
    - Admin button triggers memory decay and logs updates.
@@ -156,7 +216,7 @@ streamlit run streamlit_app.py
 - OCR errors can lead to imperfect claim extraction.
 - Meme templates might bias similarity results.
 - No personal data should be ingested without consent.
-- Concolve does not assert truth — it surfaces evidence and uncertainties.
+- spider search : multimodal classifier does not assert truth — it surfaces evidence and uncertainties.
 
 ---
 

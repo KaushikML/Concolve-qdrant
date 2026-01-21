@@ -10,13 +10,14 @@ def log_event(
     delta: float,
     reason: str,
     source_id: Optional[str] = None,
+    agent_name: Optional[str] = None,
 ) -> None:
     conn = get_connection()
     statement = """
-        INSERT INTO events (timestamp, claim_id, event_type, delta, reason, source_id)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO events (timestamp, claim_id, event_type, delta, reason, source_id, agent_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """
-    params = (now_iso(), claim_id, event_type, delta, reason, source_id)
+    params = (now_iso(), claim_id, event_type, delta, reason, source_id, agent_name)
     if conn.in_transaction:
         conn.execute(statement, params)
     else:

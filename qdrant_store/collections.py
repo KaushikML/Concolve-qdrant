@@ -41,3 +41,12 @@ def ensure_collections() -> None:
                 "ocr_text_dense": models.VectorParams(size=text_dim, distance=models.Distance.COSINE),
             },
         )
+
+
+def reset_collections() -> None:
+    client = get_client()
+    existing = {col.name for col in client.get_collections().collections}
+    for name in (CLAIMS_COLLECTION, EVIDENCE_COLLECTION, MEDIA_COLLECTION):
+        if name in existing:
+            client.delete_collection(collection_name=name)
+    ensure_collections()

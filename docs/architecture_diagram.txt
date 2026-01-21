@@ -1,6 +1,8 @@
 [Streamlit UI]
    |-- Analyze Meme (Image Upload)
    |-- Analyze Claim/Text
+       |-- Qdrant retrieval (claims + evidence)
+       |-- LLM deduction (Ollama, optional)
    |-- Ingest Corpus
 
         | OCR / Embeddings / Claim Extraction
