@@ -144,19 +144,7 @@ computes contradiction ratios, tracks meme variants, and logs its reasoning into
 - **Streamlit UI**: open **Agent Insights** and click **Run Agent Now**.
 - **Event-driven**: ingestion automatically triggers the agent after meme/text ingestion.
 
-### Optional scheduler
 
-If you want periodic runs, install APScheduler:
-
-```bash
-pip install apscheduler
-```
-
-Run the worker:
-
-```bash
-python -m agents.scheduler
-```
 
 ### Database updates
 
